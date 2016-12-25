@@ -16,10 +16,11 @@
 #include <linux/math64.h>
 #include <linux/spinlock.h>
 #include <linux/slab.h>
-#include <linux/io.h>
+ #include <linux/io.h>
 #include <linux/ftrace.h>
 #include <linux/mm.h>
 #include <linux/msm_adreno_devfreq.h>
+#include <linux/display_state.h>
 #include <asm/cacheflush.h>
 #include <soc/qcom/scm.h>
 #include "governor.h"
@@ -61,6 +62,10 @@ static DEFINE_SPINLOCK(suspend_lock);
 static u64 suspend_time;
 static u64 suspend_start;
 static unsigned long acc_total, acc_relative_busy;
+
+/* Display and suspend state booleans */ 
+static bool display_on;
+static bool suspended = false;
 
 /*
  * Returns GPU suspend time in millisecond.
@@ -246,7 +251,7 @@ static int tz_init_ca(struct devfreq_msm_adreno_tz_data *priv)
 	memcpy(tz_buf, tz_ca_data, sizeof(tz_ca_data));
 	/* Ensure memcpy completes execution */
 	mb();
-	dmac_flush_range(tz_buf,
+ 	dmac_flush_range(tz_buf,
 		tz_buf + PAGE_ALIGN(sizeof(tz_ca_data)));
 
 	desc.args[0] = virt_to_phys(tz_buf);
@@ -375,6 +380,15 @@ static int tz_get_target_freq(struct devfreq *devfreq, unsigned long *freq)
 	}
 
 	*freq = stats.current_frequency;
+
+	/*
+	 * Force to use & record as min freq when system has
+	 * entered pm-suspend or screen-off state.
+	 */
+	if (suspended || !display_on) {
+		*freq = devfreq->profile->freq_table[devfreq->profile->max_state - 1];
+		return 0;
+	}
 
 #ifdef CONFIG_ADRENO_IDLER
 	if (adreno_idler(stats, devfreq, freq)) {
@@ -505,9 +519,12 @@ static int tz_suspend(struct devfreq *devfreq)
 	unsigned int scm_data[2] = {0, 0};
 
 	__secure_tz_reset_entry2(scm_data, sizeof(scm_data), priv->is_64);
+	display_on = is_display_on();
+	suspended = true;
 
 	priv->bin.total_time = 0;
 	priv->bin.busy_time = 0;
+
 	return 0;
 }
 
@@ -540,6 +557,8 @@ static int tz_handler(struct devfreq *devfreq, unsigned int event, void *data)
 	case DEVFREQ_GOV_RESUME:
 		spin_lock(&suspend_lock);
 		suspend_time += suspend_time_ms();
+		display_on = is_display_on();
+		suspended = false;
 		/* Reset the suspend_start when gpu resumes */
 		suspend_start = 0;
 		spin_unlock(&suspend_lock);
