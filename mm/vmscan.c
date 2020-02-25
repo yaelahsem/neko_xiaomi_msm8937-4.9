@@ -3325,7 +3325,6 @@ static int balance_pgdat(pg_data_t *pgdat, int order, int classzone_idx)
 		unsigned long nr_reclaimed = sc.nr_reclaimed;
 		bool raise_priority = true;
 
-		simple_lmk_decide_reclaim(sc.priority);
 		sc.reclaim_idx = classzone_idx;
 
 		/*
