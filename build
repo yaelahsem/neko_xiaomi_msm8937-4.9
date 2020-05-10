@@ -1,0 +1,18 @@
+#!/bin/bash
+git clone https://github.com/ProtoChuz/linaro-mirror -b g4.9-64 gcc-64 &> /dev/null
+git clone https://github.com/ProtoChuz/linaro-mirror -b 4.9-32 gcc-32 &> /dev/null
+git clone https://github.com/ProtoChuz/AnyKernel3 &> /dev/null
+
+clear && clear
+export ARCH=arm64
+export USE_CCACHE=1
+
+make O=out ARCH=arm64 santoni_defconfig
+
+PATH="$(pwd)/clang/bin:$(pwd)/gcc-64/bin:$(pwd)/gcc-32/bin:${PATH}" \
+make -j$(nproc --all) O=out \
+                      ARCH=arm64 \
+                      CC=clang \
+                      CLANG_TRIPLE=aarch64-linux-gnu- \
+                      CROSS_COMPILE=aarch64-linux-android- \
+                      CROSS_COMPILE_ARM32=arm-linux-gnueabi-
